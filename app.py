@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
 
 # Set page config
-st.set_page_config(page_title="Bond Reinvestment Simulator", layout="wide")
+st.set_page_config(page_title="Dual Bond Reinvestment Simulator", layout="wide")
 
 # Custom styling
 st.markdown("""
@@ -19,88 +17,110 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Title and description
-st.title("💰 Bond Reinvestment Simulator")
+st.title("💰 Dual Bond Reinvestment Simulator")
 st.markdown("""
-This simulator demonstrates how reinvesting monthly interest from a high-yield bond into a treasury bond 
-with proper monthly compounding can potentially increase your annual returns.
+This simulator models:
+1. ₹1 lakh invested in 14% monthly bond
+2. Platform lends additional ₹1 lakh at 10%
+3. Lent amount invested in 12% monthly bond
+4. All 14% bond interest reinvested in 12% bond
 """)
 
-# Sidebar inputs
-with st.sidebar:
-    st.header("Investment Parameters")
-    initial_investment = st.number_input("Initial Investment (₹)", min_value=1000, value=100000, step=5000)
-    high_yield_rate = st.slider("High-Yield Bond Rate (% p.a.)", 1.0, 20.0, 14.0, 0.1)
-    treasury_rate = st.slider("Treasury Bond Rate (% p.a.)", 1.0, 10.0, 6.5, 0.1)
-    investment_period = st.slider("Investment Period (Years)", 1, 30, 5)
-    
-    st.markdown("---")
-    st.markdown("**How it works:**")
-    st.markdown("""
-    1. Invest in a high-yield bond (e.g., 14% p.a.)
-    2. Receive monthly interest payments
-    3. Reinvest those payments in a treasury bond (e.g., 6.5% p.a.)
-    4. Both bonds compound monthly
-    """)
+# Input parameters
+investor_capital = 100000  # ₹1 lakh
+high_yield_rate = 14.0     # 14% p.a.
+treasury_rate = 12.0       # 12% p.a.
+borrowing_rate = 10.0      # 10% p.a.
+investment_period = 5      # 5 years
 
-# Calculate monthly returns with proper compounding
-def calculate_returns(initial, high_rate, low_rate, years):
+# Calculate monthly returns
+def calculate_returns(investor_cap, high_rate, treasury_rate, borrow_rate, years):
     months = years * 12
-    monthly_high_rate = high_rate / 12 / 100  # Monthly rate for high-yield bond
-    monthly_low_rate = low_rate / 12 / 100    # Monthly rate for treasury bond
+    monthly_high_rate = high_rate / 12 / 100
+    monthly_treasury_rate = treasury_rate / 12 / 100
+    monthly_borrow_rate = borrow_rate / 12 / 100
     
-    # Initialize data structures
+    # Initialize balances
+    high_yield_principal = investor_cap  # ₹1 lakh at 14%
+    treasury_principal = investor_cap    # Additional ₹1 lakh at 12%
+    borrowed_balance = investor_cap      # ₹1 lakh loan at 10%
+    
     data = []
-    principal = initial
-    treasury_principal = 0  # This will hold all reinvested amounts and their growth
     
     for month in range(1, months + 1):
-        # Calculate interest from high-yield bond (simple interest paid out monthly)
-        interest = principal * monthly_high_rate
+        # Calculate interest from 14% bond
+        high_yield_interest = high_yield_principal * monthly_high_rate
         
-        # Add this interest to treasury principal (new deposit)
-        treasury_principal += interest
+        # Calculate interest from 12% bond (on both principal and reinvestments)
+        treasury_interest = treasury_principal * monthly_treasury_rate
         
-        # Calculate treasury bond growth (compounding monthly on entire treasury balance)
-        treasury_growth = treasury_principal * monthly_low_rate
-        treasury_principal += treasury_growth
+        # Reinvest the 14% bond interest into 12% bond
+        treasury_principal += high_yield_interest
         
-        # Update totals
-        total_value = principal + treasury_principal
+        # Add treasury interest to treasury principal (compounding)
+        treasury_principal += treasury_interest
         
-        # Append to data
+        # Accrue interest on borrowed amount
+        borrowing_cost = borrowed_balance * monthly_borrow_rate
+        borrowed_balance += borrowing_cost
+        
+        # Total assets and net value
+        total_assets = high_yield_principal + treasury_principal
+        net_value = total_assets - borrowed_balance
+        
         data.append({
             "Month": month,
-            "Principal": principal,
-            "Monthly Interest": interest,
-            "Treasury Principal": treasury_principal,
-            "Treasury Growth": treasury_growth,
-            "Total Value": total_value
+            "14% Bond Principal": high_yield_principal,
+            "14% Bond Interest": high_yield_interest,
+            "12% Bond Principal": treasury_principal,
+            "12% Bond Interest": treasury_interest,
+            "Borrowed Balance": borrowed_balance,
+            "Borrowing Cost": borrowing_cost,
+            "Total Assets": total_assets,
+            "Net Value": net_value
         })
     
     return pd.DataFrame(data)
 
 # Run simulation
-df = calculate_returns(initial_investment, high_yield_rate, treasury_rate, investment_period)
+df = calculate_returns(
+    investor_capital,
+    high_yield_rate,
+    treasury_rate,
+    borrowing_rate,
+    investment_period
+)
 
-# Calculate metrics
-final_value = df.iloc[-1]["Total Value"]
-total_interest = final_value - initial_investment
-annualized_return = ((final_value / initial_investment) ** (1/investment_period) - 1) * 100
-simple_return = (total_interest / initial_investment) * 100
+# Calculate final metrics
+final_assets = df.iloc[-1]["Total Assets"]
+final_borrowed = df.iloc[-1]["Borrowed Balance"]
+investor_final = df.iloc[-1]["Net Value"]
+
+total_return = investor_final - investor_capital
+annualized_return = ((investor_final / investor_capital) ** (1/investment_period) - 1) * 100
 
 # Display results
+st.subheader("Investment Structure")
 col1, col2, col3 = st.columns(3)
-col1.metric("Initial Investment", f"₹{initial_investment:,.0f}")
-col2.metric("Final Value", f"₹{final_value:,.0f}", delta=f"₹{total_interest:,.0f}")
-col3.metric("Annualized Return", f"{annualized_return:.1f}%", delta=f"{simple_return/investment_period:.1f}% p.a.")
+col1.metric("Investor's Capital", "₹1,00,000", "14% bond")
+col2.metric("Platform Loan", "₹1,00,000", "10% interest")
+col3.metric("Total Bond Investment", "₹2,00,000", "₹1L @14% + ₹1L @12%")
+
+st.subheader("Final Results After " + str(investment_period) + " Years")
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Assets Grown", f"₹{final_assets:,.0f}")
+col2.metric("Loan + Interest Owed", f"₹{final_borrowed:,.0f}")
+col3.metric("Investor's Net Value", f"₹{investor_final:,.0f}", 
+           f"{annualized_return:.1f}% p.a.")
 
 # Plot results
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(df["Month"], df["Principal"], label="High-Yield Bond", color='#4f8bf9', linewidth=2)
-ax.plot(df["Month"], df["Treasury Principal"], label="Treasury Bond (Reinvested)", color='#2ca02c', linewidth=2)
-ax.plot(df["Month"], df["Total Value"], label="Total Portfolio Value", color='#ff7f0e', linewidth=2, linestyle='--')
+ax.plot(df["Month"], df["14% Bond Principal"], label="14% Bond", color='#4f8bf9', linestyle='--')
+ax.plot(df["Month"], df["12% Bond Principal"], label="12% Bond (with Reinvestment)", color='#2ca02c')
+ax.plot(df["Month"], df["Borrowed Balance"], label="Loan Balance", color='#d62728')
+ax.plot(df["Month"], df["Net Value"], label="Investor's Net Worth", color='#ff7f0e', linewidth=3)
 
-ax.set_title("Investment Growth with Monthly Compounding", fontsize=16)
+ax.set_title("Investment Growth with Dual Bonds and Leverage", fontsize=16)
 ax.set_xlabel("Months", fontsize=12)
 ax.set_ylabel("Amount (₹)", fontsize=12)
 ax.grid(True, alpha=0.3)
@@ -109,44 +129,45 @@ ax.set_facecolor('#f5f5f5')
 
 st.pyplot(fig)
 
-# Show data table
-st.subheader("Monthly Breakdown")
+# Show detailed table
+st.subheader("Monthly Breakdown (Last 12 Months)")
 st.dataframe(df.tail(12).style.format({
-    "Principal": "{:,.2f}",
-    "Monthly Interest": "{:,.2f}",
-    "Treasury Principal": "{:,.2f}",
-    "Treasury Growth": "{:,.2f}",
-    "Total Value": "{:,.2f}"
-}), height=400)
+    "14% Bond Principal": "{:,.0f}",
+    "14% Bond Interest": "{:,.0f}",
+    "12% Bond Principal": "{:,.0f}",
+    "12% Bond Interest": "{:,.0f}",
+    "Borrowed Balance": "{:,.0f}",
+    "Borrowing Cost": "{:,.0f}",
+    "Total Assets": "{:,.0f}",
+    "Net Value": "{:,.0f}"
+})
 
-# Detailed explanation
-with st.expander("Detailed Calculation Explanation"):
-    st.markdown(f"""
-    ### Monthly Calculation Breakdown (First 3 Months Example)
+# Calculation explanation
+with st.expander("How the Calculation Works"):
+    st.markdown("""
+    **Monthly Process:**
+    1. ₹1 lakh in 14% bond earns monthly interest (14%/12 = 1.1667%)
+    2. ₹1 lakh loan is invested in 12% bond (earning 1% monthly)
+    3. The 14% bond's interest is reinvested into the 12% bond
+    4. The 12% bond compounds monthly on:
+       - Original ₹1 lakh principal
+       - All reinvested 14% bond interest
+       - Its own accumulated interest
+    5. The ₹1 lakh loan accrues interest at 10% (0.833% monthly)
     
-    **Initial Investment:** ₹{initial_investment:,.2f} at {high_yield_rate}% p.a. (High-Yield Bond)
-    **Reinvestment Rate:** {treasury_rate}% p.a. (Treasury Bond)
-    
-    **Month 1:**
-    - High-Yield Interest = ₹{initial_investment:,.2f} × ({high_yield_rate}/12)% = ₹{initial_investment * high_yield_rate/12/100:,.2f}
-    - Treasury Balance = ₹{initial_investment * high_yield_rate/12/100:,.2f} (initial deposit)
-    - Treasury Growth = ₹{initial_investment * high_yield_rate/12/100:,.2f} × ({treasury_rate}/12)% = ₹{initial_investment * high_yield_rate/12/100 * treasury_rate/12/100:,.2f}
-    - Total Treasury = ₹{initial_investment * high_yield_rate/12/100 * (1 + treasury_rate/12/100):,.2f}
-    
-    **Month 2:**
-    - High-Yield Interest = Same as Month 1 (principal unchanged)
-    - Treasury Balance grows with new deposit + previous balance compounding
-    - This pattern continues each month with compounding on the treasury balance
-    
-    **After {investment_period} years ({investment_period*12} months):**
-    - Final Portfolio Value = ₹{final_value:,.2f}
-    - Annualized Return = {annualized_return:.2f}%
+    **Key Points:**
+    - The 14% bond principal remains constant (only interest is withdrawn)
+    - The 12% bond grows through both reinvestment and compounding
+    - The loan balance grows at 10% until repayment
+    - Net value = (14% bond + 12% bond) - loan balance
     """)
 
-# Add a disclaimer
-st.warning("""
-**Disclaimer**: This is a mathematical simulation assuming perfect conditions. Actual investment returns may vary 
-due to market conditions, bond defaults, taxes, fees, and other factors. The high yield bond's 14% return carries 
-higher risk than treasury bonds. Past performance is not indicative of future results. 
-Always consult with a financial advisor before making investment decisions.
+# Risk disclosure
+st.error("""
+**Important Risks:**
+- The 14% bond likely carries higher default risk
+- Requires the 12% bond to outperform the 10% borrowing cost
+- Taxes and fees would reduce actual returns
+- Early withdrawal penalties could affect results
+- Liquidity risk if bonds can't be sold when needed
 """)
