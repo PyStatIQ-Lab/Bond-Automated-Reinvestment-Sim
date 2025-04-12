@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
 
 # Set page config
@@ -21,15 +20,49 @@ st.markdown("""
 st.title("💰 Leveraged Bond Reinvestment Simulator")
 st.markdown("""
 **🧠 Scenario:**  
-Invest ₹1L in 14% bond + Borrow ₹1L @10% → Invest in 12% bond + Reinvest all interest in 12% bond
+Invest in high-yield bond + Borrow additional funds → Invest in treasury bond + Reinvest all interest
 """)
 
-# Parameters
-initial_investment = 100000  # ₹1,00,000
-high_yield_rate = 14.0       # 14% p.a.
-treasury_rate = 12.0         # 12% p.a.
-borrowing_rate = 10.0        # 10% p.a.
-months = 12                  # 1 year
+# Sidebar controls
+with st.sidebar:
+    st.header("Investment Parameters")
+    initial_investment = st.number_input("Initial Investment (₹)", 
+                                       min_value=10000, 
+                                       value=100000, 
+                                       step=10000)
+    
+    high_yield_rate = st.slider("High-Yield Bond Rate (% p.a.)", 
+                              min_value=1.0, 
+                              max_value=30.0, 
+                              value=14.0, 
+                              step=0.1)
+    
+    treasury_rate = st.slider("Treasury Bond Rate (% p.a.)", 
+                            min_value=1.0, 
+                            max_value=20.0, 
+                            value=12.0, 
+                            step=0.1)
+    
+    borrowing_rate = st.slider("Borrowing Rate (% p.a.)", 
+                             min_value=1.0, 
+                             max_value=20.0, 
+                             value=10.0, 
+                             step=0.1)
+    
+    months = st.slider("Investment Period (Months)", 
+                      min_value=1, 
+                      max_value=60, 
+                      value=12, 
+                      step=1)
+    
+    leverage_ratio = st.slider("Leverage Ratio", 
+                             min_value=1.0, 
+                             max_value=3.0, 
+                             value=1.0, 
+                             step=0.1)
+
+# Calculate borrowed amount
+borrowed_amount = initial_investment * leverage_ratio
 
 # Monthly rates
 monthly_high = high_yield_rate / 12 / 100
@@ -38,8 +71,8 @@ monthly_borrow = borrowing_rate / 12 / 100
 
 # Initialize variables
 high_yield_principal = initial_investment
-treasury_principal = initial_investment  # Borrowed amount
-borrowed_balance = initial_investment
+treasury_principal = borrowed_amount
+borrowed_balance = borrowed_amount
 total_reinvested = 0
 loan_interest_paid = 0
 
@@ -63,8 +96,8 @@ for month in range(1, months + 1):
     # Record monthly values
     records.append({
         "Month": month,
-        "14% Bond Interest": high_yield_interest,
-        "12% Bond Interest": treasury_interest,
+        "High-Yield Interest": high_yield_interest,
+        "Treasury Interest": treasury_interest,
         "Total Reinvested": total_reinvestment,
         "Treasury Balance": treasury_principal,
         "Loan Interest Paid": monthly_loan_interest,
@@ -76,82 +109,93 @@ df = pd.DataFrame(records)
 
 # Final calculations
 final_treasury = df.iloc[-1]["Treasury Balance"]
-total_loan_cost = initial_investment + df.iloc[-1]["Cumulative Loan Interest"]  # Principal + interest
+total_loan_cost = borrowed_amount + df.iloc[-1]["Cumulative Loan Interest"]
 
 # Investor's final position
 investor_final = high_yield_principal + final_treasury - total_loan_cost
 net_profit = investor_final - initial_investment
-annual_return = (net_profit / initial_investment) * 100
+annualized_return = (net_profit / initial_investment) * (12/months) * 100  # Annualized
+
+# Display summary
+st.subheader("📊 Investment Summary")
+col1, col2, col3 = st.columns(3)
+col1.metric("Your Investment", f"₹{initial_investment:,.0f}")
+col2.metric("Borrowed Amount", f"₹{borrowed_amount:,.0f} ({leverage_ratio:,.1f}X)")
+col3.metric("Total Invested", f"₹{initial_investment + borrowed_amount:,.0f}")
 
 # Display results
-st.subheader("💵 Final Results After 1 Year")
+st.subheader("💵 Final Results")
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Reinvested Interest", f"₹{final_treasury:,.0f}")
-col2.metric("Loan Repayment (Principal + Interest)", f"₹{total_loan_cost:,.0f}")
-col3.metric("Investor's Net Profit", f"₹{net_profit:,.0f}", f"{annual_return:.2f}% return")
+col1.metric("Reinvested Amount Grown To", f"₹{final_treasury:,.0f}")
+col2.metric("Total Loan Repayment", f"₹{total_loan_cost:,.0f}")
+col3.metric("Your Net Profit", f"₹{net_profit:,.0f}", 
+           f"{annualized_return:.1f}% annualized")
 
 # Monthly breakdown
 st.subheader("📅 Monthly Breakdown")
 st.dataframe(df.style.format({
-    "14% Bond Interest": "₹{:,.0f}",
-    "12% Bond Interest": "₹{:,.0f}",
+    "High-Yield Interest": "₹{:,.0f}",
+    "Treasury Interest": "₹{:,.0f}",
     "Total Reinvested": "₹{:,.0f}",
     "Treasury Balance": "₹{:,.0f}",
     "Loan Interest Paid": "₹{:,.0f}",
     "Cumulative Loan Interest": "₹{:,.0f}"
 }))
 
-# Visualization
-fig, ax1 = plt.subplots(figsize=(10, 6))
+# Visualizations
+fig, ax = plt.subplots(figsize=(10, 6))
 
-color = 'tab:blue'
-ax1.set_xlabel('Month')
-ax1.set_ylabel('Amount (₹)', color=color)
-ax1.plot(df["Month"], df["Treasury Balance"], label="Reinvested Amount", color=color)
-ax1.tick_params(axis='y', labelcolor=color)
+# Plot growth curves
+ax.plot(df["Month"], df["Treasury Balance"], 
+        label="Reinvested Amount", color='#4f8bf9', linewidth=2)
+ax.plot(df["Month"], [borrowed_amount + x for x in df["Cumulative Loan Interest"]], 
+        label="Loan Balance", color='#d62728', linestyle='--')
+ax.plot(df["Month"], [initial_investment + x for x in df["Treasury Balance"] - df["Cumulative Loan Interest"] - borrowed_amount], 
+        label="Your Net Value", color='#2ca02c', linewidth=3)
 
-ax2 = ax1.twinx()
-color = 'tab:red'
-ax2.set_ylabel('Cumulative Loan Interest (₹)', color=color)
-ax2.plot(df["Month"], df["Cumulative Loan Interest"], label="Loan Interest", color=color, linestyle='--')
-ax2.tick_params(axis='y', labelcolor=color)
+ax.set_title("Investment Growth Over Time", fontsize=16)
+ax.set_xlabel("Months", fontsize=12)
+ax.set_ylabel("Amount (₹)", fontsize=12)
+ax.grid(True, alpha=0.3)
+ax.legend()
+ax.set_facecolor('#f5f5f5')
 
-plt.title("Reinvested Growth vs Loan Interest Accrual")
-fig.tight_layout()
 st.pyplot(fig)
 
 # Calculation explanation
-with st.expander("🔍 Detailed Calculation Steps"):
+with st.expander("🧮 See Detailed Calculations"):
     st.markdown(f"""
-    ### Monthly Process:
-    1. **14% Bond:**
-       - Principal: ₹{initial_investment:,.0f} (stays constant)
-       - Monthly interest: ₹{initial_investment:,.0f} × {monthly_high:.3%} = ₹{high_yield_interest:,.0f}
+    ### Monthly Calculation Process:
     
-    2. **12% Bond (Borrowed Money):**
-       - Principal: ₹{initial_investment:,.0f}
-       - Monthly interest: ₹{initial_investment:,.0f} × {monthly_treasury:.3%} = ₹{treasury_interest:,.0f}
+    1. **High-Yield Bond ({high_yield_rate}% p.a.)**
+       - Principal: ₹{initial_investment:,.0f} (remains constant)
+       - Monthly interest: ₹{initial_investment:,.0f} × ({high_yield_rate}/12)% = ₹{high_yield_interest:,.0f}
     
-    3. **Reinvestment:**
-       - Total monthly: ₹{high_yield_interest:,.0f} + ₹{treasury_interest:,.0f} = ₹{total_reinvestment:,.0f}
-       - Compounded monthly at {monthly_treasury:.3%}
+    2. **Treasury Bond ({treasury_rate}% p.a.)**
+       - Borrowed principal: ₹{borrowed_amount:,.0f}
+       - Monthly interest: ₹{borrowed_amount:,.0f} × ({treasury_rate}/12)% = ₹{treasury_interest:,.0f}
     
-    4. **Loan Costs:**
-       - Monthly interest: ₹{initial_investment:,.0f} × {monthly_borrow:.3%} = ₹{monthly_loan_interest:,.0f}
-       - Total interest after 12 months: ₹{loan_interest_paid:,.0f}
+    3. **Reinvestment**
+       - Total monthly reinvestment: ₹{high_yield_interest:,.0f} + ₹{treasury_interest:,.0f} = ₹{total_reinvestment:,.0f}
+       - Compounded monthly at {treasury_rate/12:.3f}%
     
-    ### Final Position:
+    4. **Loan Costs ({borrowing_rate}% p.a.)**
+       - Monthly interest: ₹{borrowed_amount:,.0f} × ({borrowing_rate}/12)% = ₹{monthly_loan_interest:,.0f}
+    
+    ### Final Position After {months} Months:
     - Reinvested amount grows to: ₹{final_treasury:,.0f}
-    - Repay loan: ₹{initial_investment:,.0f} principal + ₹{loan_interest_paid:,.0f} interest
-    - Net profit: ₹{net_profit:,.0f} ({annual_return:.2f}% return)
+    - Repay loan: ₹{borrowed_amount:,.0f} principal + ₹{loan_interest_paid:,.0f} interest
+    - Your original investment: ₹{initial_investment:,.0f}
+    - Net profit: ₹{net_profit:,.0f}
+    - Annualized return: {annualized_return:.1f}%
     """)
 
 # Risk disclosure
-st.warning("""
-**⚠️ Important Risks:**
-1. The 14% bond likely carries higher default risk
-2. Requires consistent monthly interest payments
-3. Assumes no early withdrawal of funds
-4. Does not account for taxes or platform fees
-5. Liquidity risk if bonds can't be sold when needed
+st.error("""
+**⚠️ Important Risks to Consider:**
+1. The high-yield bond ({high_yield_rate}%) carries higher default risk than treasury bonds
+2. Requires the treasury bond return ({treasury_rate}%) to exceed borrowing cost ({borrowing_rate}%)
+3. Monthly compounding assumes perfect reinvestment (may not be realistic)
+4. Does not account for taxes, platform fees, or early withdrawal penalties
+5. Leverage magnifies both gains and losses
 """)
