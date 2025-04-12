@@ -140,7 +140,7 @@ st.dataframe(df.tail(12).style.format({
     "Borrowing Cost": "{:,.0f}",
     "Total Assets": "{:,.0f}",
     "Net Value": "{:,.0f}"
-})
+}))
 
 # Calculation explanation
 with st.expander("How the Calculation Works"):
