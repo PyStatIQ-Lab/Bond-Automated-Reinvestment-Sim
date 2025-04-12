@@ -21,8 +21,8 @@ st.markdown("""
 # Title and description
 st.title("💰 Bond Reinvestment Simulator")
 st.markdown("""
-This simulator demonstrates how reinvesting monthly interest from a high-yield bond (14%) into a treasury bond (6.5%) 
-can potentially increase your annual returns up to 28%.
+This simulator demonstrates how reinvesting monthly interest from a high-yield bond into a treasury bond 
+with proper monthly compounding can potentially increase your annual returns.
 """)
 
 # Sidebar inputs
@@ -32,56 +32,55 @@ with st.sidebar:
     high_yield_rate = st.slider("High-Yield Bond Rate (% p.a.)", 1.0, 20.0, 14.0, 0.1)
     treasury_rate = st.slider("Treasury Bond Rate (% p.a.)", 1.0, 10.0, 6.5, 0.1)
     investment_period = st.slider("Investment Period (Years)", 1, 30, 5)
-    compounding_freq = st.selectbox("Compounding Frequency", ["Monthly", "Quarterly", "Annually"], index=0)
     
     st.markdown("---")
     st.markdown("**How it works:**")
     st.markdown("""
-    1. Invest in a high-yield bond (14% p.a.)
+    1. Invest in a high-yield bond (e.g., 14% p.a.)
     2. Receive monthly interest payments
-    3. Reinvest those payments in a treasury bond (6.5% p.a.)
-    4. Compound returns over time
+    3. Reinvest those payments in a treasury bond (e.g., 6.5% p.a.)
+    4. Both bonds compound monthly
     """)
 
-# Calculate monthly returns
-def calculate_returns(initial, high_rate, low_rate, years, freq):
+# Calculate monthly returns with proper compounding
+def calculate_returns(initial, high_rate, low_rate, years):
     months = years * 12
-    monthly_high_rate = high_rate / 12 / 100
-    monthly_low_rate = low_rate / 12 / 100
+    monthly_high_rate = high_rate / 12 / 100  # Monthly rate for high-yield bond
+    monthly_low_rate = low_rate / 12 / 100    # Monthly rate for treasury bond
     
-    # Initialize data
+    # Initialize data structures
     data = []
     principal = initial
-    reinvested = 0
-    total_reinvested = 0
+    treasury_principal = 0  # This will hold all reinvested amounts and their growth
     
     for month in range(1, months + 1):
-        # Calculate interest from high-yield bond
+        # Calculate interest from high-yield bond (simple interest paid out monthly)
         interest = principal * monthly_high_rate
         
-        # Reinvest the interest in treasury bond
-        reinvested += interest
-        reinvested_growth = reinvested * monthly_low_rate
-        reinvested += reinvested_growth
+        # Add this interest to treasury principal (new deposit)
+        treasury_principal += interest
+        
+        # Calculate treasury bond growth (compounding monthly on entire treasury balance)
+        treasury_growth = treasury_principal * monthly_low_rate
+        treasury_principal += treasury_growth
         
         # Update totals
-        total_reinvested += interest
-        total_value = principal + reinvested
+        total_value = principal + treasury_principal
         
         # Append to data
         data.append({
             "Month": month,
             "Principal": principal,
-            "Interest": interest,
-            "Reinvested": reinvested,
-            "Total Value": total_value,
-            "Total Reinvested": total_reinvested
+            "Monthly Interest": interest,
+            "Treasury Principal": treasury_principal,
+            "Treasury Growth": treasury_growth,
+            "Total Value": total_value
         })
     
     return pd.DataFrame(data)
 
 # Run simulation
-df = calculate_returns(initial_investment, high_yield_rate, treasury_rate, investment_period, compounding_freq)
+df = calculate_returns(initial_investment, high_yield_rate, treasury_rate, investment_period)
 
 # Calculate metrics
 final_value = df.iloc[-1]["Total Value"]
@@ -97,11 +96,11 @@ col3.metric("Annualized Return", f"{annualized_return:.1f}%", delta=f"{simple_re
 
 # Plot results
 fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(df["Month"], df["Principal"], label="Principal", color='#4f8bf9', linewidth=2)
-ax.plot(df["Month"], df["Reinvested"], label="Reinvested Amount", color='#2ca02c', linewidth=2)
-ax.plot(df["Month"], df["Total Value"], label="Total Value", color='#ff7f0e', linewidth=2, linestyle='--')
+ax.plot(df["Month"], df["Principal"], label="High-Yield Bond", color='#4f8bf9', linewidth=2)
+ax.plot(df["Month"], df["Treasury Principal"], label="Treasury Bond (Reinvested)", color='#2ca02c', linewidth=2)
+ax.plot(df["Month"], df["Total Value"], label="Total Portfolio Value", color='#ff7f0e', linewidth=2, linestyle='--')
 
-ax.set_title("Investment Growth Over Time", fontsize=16)
+ax.set_title("Investment Growth with Monthly Compounding", fontsize=16)
 ax.set_xlabel("Months", fontsize=12)
 ax.set_ylabel("Amount (₹)", fontsize=12)
 ax.grid(True, alpha=0.3)
@@ -113,39 +112,41 @@ st.pyplot(fig)
 # Show data table
 st.subheader("Monthly Breakdown")
 st.dataframe(df.tail(12).style.format({
-    "Principal": "{:,.0f}",
-    "Interest": "{:,.0f}",
-    "Reinvested": "{:,.0f}",
-    "Total Value": "{:,.0f}",
-    "Total Reinvested": "{:,.0f}"
+    "Principal": "{:,.2f}",
+    "Monthly Interest": "{:,.2f}",
+    "Treasury Principal": "{:,.2f}",
+    "Treasury Growth": "{:,.2f}",
+    "Total Value": "{:,.2f}"
 }), height=400)
 
-# Explanation
-with st.expander("How this strategy works"):
-    st.markdown("""
-    ### Bond Reinvestment Strategy
+# Detailed explanation
+with st.expander("Detailed Calculation Explanation"):
+    st.markdown(f"""
+    ### Monthly Calculation Breakdown (First 3 Months Example)
     
-    1. **Primary Investment**: You invest in a high-yield bond paying 14% annual interest paid monthly.
-    2. **Monthly Interest**: Each month, you receive interest payments (14%/12 = ~1.167% monthly).
-    3. **Reinvestment**: Instead of spending this interest, you automatically reinvest it in a safer treasury bond paying 6.5% annually.
-    4. **Compounding Effect**: The treasury bond also pays interest on your reinvested amounts, creating a compounding effect.
+    **Initial Investment:** ₹{initial_investment:,.2f} at {high_yield_rate}% p.a. (High-Yield Bond)
+    **Reinvestment Rate:** {treasury_rate}% p.a. (Treasury Bond)
     
-    ### Why It Works
+    **Month 1:**
+    - High-Yield Interest = ₹{initial_investment:,.2f} × ({high_yield_rate}/12)% = ₹{initial_investment * high_yield_rate/12/100:,.2f}
+    - Treasury Balance = ₹{initial_investment * high_yield_rate/12/100:,.2f} (initial deposit)
+    - Treasury Growth = ₹{initial_investment * high_yield_rate/12/100:,.2f} × ({treasury_rate}/12)% = ₹{initial_investment * high_yield_rate/12/100 * treasury_rate/12/100:,.2f}
+    - Total Treasury = ₹{initial_investment * high_yield_rate/12/100 * (1 + treasury_rate/12/100):,.2f}
     
-    - **Double Compounding**: Your money grows from both the high-yield bond and the treasury bond's compounding.
-    - **Risk Management**: While the primary bond might be higher risk, the reinvested amounts go to safer bonds.
-    - **Automated Growth**: The system automatically grows your wealth without additional capital.
+    **Month 2:**
+    - High-Yield Interest = Same as Month 1 (principal unchanged)
+    - Treasury Balance grows with new deposit + previous balance compounding
+    - This pattern continues each month with compounding on the treasury balance
     
-    ### Important Notes
-    
-    - This assumes the bonds pay consistent interest rates (real bonds may fluctuate)
-    - Higher yields typically come with higher risk (default risk, interest rate risk)
-    - Taxes and fees are not considered in this simulation
+    **After {investment_period} years ({investment_period*12} months):**
+    - Final Portfolio Value = ₹{final_value:,.2f}
+    - Annualized Return = {annualized_return:.2f}%
     """)
 
 # Add a disclaimer
 st.warning("""
-**Disclaimer**: This is a simplified simulation for educational purposes only. Actual investment returns may vary 
-due to market conditions, bond defaults, taxes, and other factors. Past performance is not indicative of future results. 
+**Disclaimer**: This is a mathematical simulation assuming perfect conditions. Actual investment returns may vary 
+due to market conditions, bond defaults, taxes, fees, and other factors. The high yield bond's 14% return carries 
+higher risk than treasury bonds. Past performance is not indicative of future results. 
 Always consult with a financial advisor before making investment decisions.
 """)
